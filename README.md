@@ -5,9 +5,8 @@
 </a>
 
 <p align="center">
-  <a href="https:/\/circleci.com/gh/razvanilin/chartbrew">
-    <img src="https://app.buddy.works/razvanilin/chartbrew/pipelines/pipeline/230383/badge.svg?token=25baf00f6b4d446c82fc0d93f2330616808aeb930dc818c5138b5c5cf22f4bc8" alt="ChartBrew build" />
-  </a>
+  <a href="https://circleci.com/gh/chartbrew/chartbrew" target="_blank"><img src="https://circleci.com/gh/chartbrew/chartbrew.svg?style=svg" alt="ChartBrew build" /></a>
+  <a href="https://discord.gg/KwGEbFk" target="_blank"><img src="https://img.shields.io/discord/656557151048957995?label=Discord" alt="" /></a>
 </p>
 
 [ChartBrew](https://chartbrew.com) is an open-source web application used to generate charts from different data sources. The focus of this project is to make the process less tedious and put as much accent as possible on Usability.
@@ -49,6 +48,8 @@ It is recommended you head over to the more detailed documentation to find out h
 
 If you already have a MySQL server running, create a database called charbrew and adjust the parameters below with your connection settings. The command will then setup everything for you.
 
+**Important** Windows command line is not supported at the moment. Use something like [Cygwin](http://www.cygwin.com/) on Windows.
+
 ```sh
 npx create-chartbrew-app myApp --dbname="chartbrew" --dbusername="root" --dbpassword="" --dbhost="localhost"
 ```
@@ -60,6 +61,7 @@ The arguments are optional, but they set the environmental variables needed for 
 If the database parameters are correct, the migrations should run automatically. If the new database wasn't populated with tables, ensure all the environmental variables are set, then run the following command in the `server` folder:
 
 ```sh
+cd server
 npm run db:migrate
 ```
 
@@ -88,8 +90,15 @@ Open up `.env-template` in the root folder of the project and make sure that the
 Then run the following commands:
 
 ```sh
-npm run setup:docker
+npm run prepareSettings
 docker-compose up
 ```
 
 For more information on how to configure, modify and deploy ChartBrew, [**read the full docs here**](https://docs.chartbrew.com)
+
+## Contributors
+
+Everybody that contributed to Chartbrew outside of the core Team:
+
+<a href="https://github.com/Mobilpadde" target="_blank"><img class="contributors" src="https://avatars0.githubusercontent.com/u/1170567?s=40&v=4">
+</a>

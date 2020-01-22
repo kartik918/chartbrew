@@ -10,9 +10,12 @@ import {
 import {
   Line, Bar, Pie, Doughnut, Radar, Polar
 } from "react-chartjs-2";
+import { ToastContainer, toast, Flip } from "react-toastify";
 import moment from "moment";
+import _ from "lodash";
 
 import "chart.piecelabel.js";
+import "react-toastify/dist/ReactToastify.min.css";
 
 import {
   testQuery, createChart, runQuery, updateChart, getPreviewData
@@ -37,19 +40,25 @@ class AddChart extends Component {
     this.state = {
       step: 0,
       newChart: {
+        name: "Untitled",
         query: "connection.collection('users').find()",
         displayLegend: false,
+        connection_id: null,
         Datasets: [{
           xAxis: "root",
           legend: "Dataset #1",
         }],
         offset: "offset",
+        draft: true,
+        includeZeros: true,
+        timeInterval: "day",
       },
       ddConnections: [],
       updatedEdit: false, // eslint-disable-line
-      initialQuery: "",
       viewDatasetOptions: false,
       activeDataset: 0,
+      timeToSave: true,
+      autosave: true,
     };
   }
 
@@ -60,6 +69,8 @@ class AddChart extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    const { newChart, timeToSave, autosave } = this.state;
+
     if (prevProps.charts) {
       if (prevProps.match.params.chartId && prevProps.charts.length > 0 && !prevState.updatedEdit) {
         this._prepopulateState();
@@ -68,6 +79,11 @@ class AddChart extends Component {
 
     if (prevProps.connections.length > 0 && prevState.ddConnections.length === 0) {
       this._populateConnections();
+    }
+
+    // update the draft if it's already created and only if it's a draft
+    if (!_.isEqual(prevState.newChart, newChart) && timeToSave && newChart.id && autosave) {
+      this._updateDraft();
     }
   }
 
@@ -96,7 +112,10 @@ class AddChart extends Component {
         }
 
         this.setState({
-          newChart: foundChart, updatedEdit: true, initialQuery: chart.query, selectedConnection,
+          newChart: foundChart,
+          updatedEdit: true,
+          selectedConnection,
+          autosave: foundChart.draft,
         }, () => {
           this._onPreview();
         });
@@ -121,6 +140,25 @@ class AddChart extends Component {
     });
 
     this.setState({ ddConnections: tempState });
+  }
+
+  _onChangeStep = (step) => {
+    const { createChart, match } = this.props;
+    const { newChart } = this.state;
+    this.setState({ step });
+
+    if (!newChart.id && step > 0) {
+      createChart(match.params.projectId, newChart)
+        .then((chart) => {
+          if (chart && chart.id) {
+            this.setState({
+              newChart: {
+                ...newChart, id: chart.id, Datasets: chart.Datasets,
+              }
+            });
+          }
+        });
+    }
   }
 
   _onChangeConnection = (value) => {
@@ -150,161 +188,128 @@ class AddChart extends Component {
     });
   }
 
-  _onTypeSelect = (type) => {
+  _onChangeType = ({ type, subType }) => {
     const { newChart } = this.state;
-    this.setState({ newChart: { ...newChart, type } });
-    return type;
+    this.setState({ newChart: { ...newChart, type, subType: subType || "" } });
   }
 
-  _onChangeXAxis = (xAxis) => {
+  _onChangeAxis = ({ xAxis, yAxis }) => {
     const { activeDataset, newChart } = this.state;
     const tempChart = { ...newChart };
-    tempChart.Datasets[activeDataset].xAxis = xAxis;
+
+    if (xAxis) {
+      tempChart.Datasets[activeDataset].xAxis = xAxis;
+    }
+    if (yAxis) {
+      tempChart.yAxis = yAxis;
+    }
+
     this.setState({ newChart: tempChart });
   }
 
-  _onDatasetColor = (color) => {
+  _onChangeChart = ({
+    datasetColor, fillColor, fill, xAxis, patterns, legend,
+  }) => {
     const { activeDataset, newChart, previewChart } = this.state;
-    const tempChart = { ...newChart };
-    tempChart.Datasets[activeDataset].datasetColor = color;
+    const tempChart = newChart;
+    const realTimeData = previewChart;
 
-    if (previewChart) {
-      const tempData = { ...previewChart };
-      if (tempData.data.datasets[activeDataset]) {
-        tempData.data.datasets[activeDataset].borderColor = color;
-      }
-      this.setState({
-        newChart: tempChart,
-        previewChart: tempData,
-      });
-    } else {
-      this.setState({
-        newChart: tempChart,
-      });
-    }
-  }
-
-  _onFillColor = (color, colorIndex) => {
-    const { activeDataset, newChart, previewChart } = this.state;
-    const tempChart = { ...newChart };
-
-    let colorValue = color;
-    if (colorIndex != null) {
-      colorValue = [color];
-      if (!tempChart.Datasets[activeDataset].fillColor) {
-        tempChart.Datasets[activeDataset].fillColor = colorValue;
-      } else if (tempChart.Datasets[activeDataset].fillColor[colorIndex]) {
-        tempChart.Datasets[activeDataset].fillColor[colorIndex] = color;
-      } else {
-        tempChart.Datasets[activeDataset].fillColor.push(color);
-      }
-
-      colorValue = tempChart.Datasets[activeDataset].fillColor;
-    }
-
-    tempChart.Datasets[activeDataset].fillColor = colorValue;
-
-    if (previewChart) {
-      const tempData = { ...previewChart };
-      if (tempData.data.datasets[activeDataset]) {
-        if (colorValue) {
-          tempData.data.datasets[activeDataset].backgroundColor = colorValue;
-          tempData.data.datasets[activeDataset].fill = true;
-        } else {
-          tempData.data.datasets[activeDataset].fill = false;
+    if (datasetColor) {
+      tempChart.Datasets[activeDataset].datasetColor = datasetColor;
+      if (previewChart) {
+        if (realTimeData.data.datasets[activeDataset]) {
+          realTimeData.data.datasets[activeDataset].borderColor = datasetColor;
         }
       }
-
-      this.setState({
-        newChart: tempChart,
-        previewChart: tempData,
-      });
-    } else {
-      this.setState({
-        newChart: tempChart,
-      });
     }
-  }
 
-  _onChangeLegend = (legend) => {
-    const { activeDataset, newChart, previewChart } = this.state;
-    const tempChart = { ...newChart };
-    tempChart.Datasets[activeDataset].legend = legend;
+    if (fillColor) {
+      tempChart.Datasets[activeDataset].fillColor = fillColor;
 
-    if (previewChart) {
-      const tempData = { ...previewChart };
-      if (tempData.data.datasets[activeDataset]) {
-        if (legend) {
-          tempData.data.datasets[activeDataset].label = legend;
-        } else {
-          tempData.data.datasets[activeDataset].label = "";
+      if (previewChart && realTimeData.data.datasets[activeDataset]) {
+        realTimeData.data.datasets[activeDataset].backgroundColor = fillColor;
+      }
+    }
+
+    if (fill || fill === false) {
+      tempChart.Datasets[activeDataset].fill = fill;
+      if (previewChart && realTimeData.data.datasets[activeDataset]) {
+        realTimeData.data.datasets[activeDataset].fill = fill;
+      }
+    }
+
+    if (xAxis) {
+      tempChart.Datasets[activeDataset].xAxis = xAxis;
+    }
+
+    if (patterns) {
+      tempChart.Datasets[activeDataset].patterns = JSON.parse(JSON.stringify(patterns));
+    }
+
+    if (legend) {
+      tempChart.Datasets[activeDataset].legend = legend;
+
+      if (previewChart) {
+        if (realTimeData.data.datasets[activeDataset]) {
+          if (legend) {
+            realTimeData.data.datasets[activeDataset].label = legend;
+          } else {
+            realTimeData.data.datasets[activeDataset].label = "";
+          }
         }
       }
-      this.setState({ newChart: tempChart, previewChart: tempData });
+    }
+
+    if (previewChart) {
+      this.setState({
+        newChart: tempChart,
+        previewChart: realTimeData,
+      });
     } else {
-      this.setState({ newChart: tempChart });
+      this.setState({
+        newChart: tempChart,
+      });
     }
   }
 
-  _onChangePoint = (point) => {
+  _onChangeGlobalSettings = ({
+    pointRadius, displayLegend, dateRange, includeZeros, timeInterval, currentEndDate,
+  }) => {
     const { newChart, previewChart } = this.state;
+
+    let realTimeData;
     if (previewChart) {
-      const tempData = { ...previewChart };
-      tempData.options.elements.point.radius = point;
-      tempData.data.datasets[0].pointRadius = point;
-      this.setState({
-        newChart: { ...newChart, pointRadius: point },
-        previewChart: tempData,
-      });
-    } else {
-      this.setState({ newChart: { ...newChart, pointRadius: point } });
+      realTimeData = { ...previewChart };
+      // point
+      realTimeData.options.elements.point.radius = pointRadius;
+      realTimeData.data.datasets[0].pointRadius = pointRadius;
+      // legend
+      realTimeData.options.legend.display = displayLegend;
     }
-  }
 
-  _onDisplayLegend = (display) => {
-    const { newChart, previewChart, pointRadius } = this.state;
-
-    if (previewChart) {
-      const tempData = { ...previewChart };
-      tempData.options.legend.display = display;
-      tempData.options.elements.point.radius = pointRadius;
-      tempData.data.datasets[0].pointRadius = pointRadius;
-      this.setState({
-        newChart: { ...newChart, displayLegend: display },
-        previewChart: tempData,
-      }, () => {
-        // tempData.options.elements.point.radius = this.state.pointRadius;
-        // tempData.data.datasets[0].pointRadius = this.state.pointRadius;
-        // this.setState({ previewChart: tempData });
-      });
-    } else {
-      this.setState({
-        newChart: { ...newChart, displayLegend: display },
-      });
-    }
-  }
-
-  _onChangePatterns = (patterns) => {
-    const { activeDataset, newChart } = this.state;
-    const tempChart = { ...newChart };
-    tempChart.Datasets[activeDataset].patterns = JSON.parse(JSON.stringify(patterns));
-
-    this.setState({ newChart: tempChart });
-  }
-
-  _onDateRange = (range) => {
-    const { newChart } = this.state;
     this.setState({
+      previewChart: realTimeData || previewChart,
       newChart: {
         ...newChart,
-        startDate: range.startDate,
-        endDate: range.endDate,
+        pointRadius: typeof pointRadius !== "undefined" ? pointRadius : newChart.pointRadius,
+        displayLegend: typeof displayLegend !== "undefined" ? displayLegend : newChart.displayLegend,
+        startDate: (dateRange && dateRange.startDate) || newChart.startDate,
+        endDate: (dateRange && dateRange.endDate) || newChart.endDate,
+        timeInterval: timeInterval || newChart.timeInterval,
+        includeZeros: typeof includeZeros !== "undefined" ? includeZeros : newChart.includeZeros,
+        currentEndDate: typeof currentEndDate !== "undefined" ? currentEndDate : newChart.currentEndDate,
+      },
+    }, () => {
+      if (includeZeros || includeZeros === false
+        || currentEndDate || currentEndDate === false
+        || timeInterval
+      ) {
+        this._onPreview();
       }
     });
   }
 
   /* API Stuff */
-
   _formatApiRequest = () => {
     const { apiRequest } = this.state;
     if (!apiRequest) return {};
@@ -379,7 +384,6 @@ class AddChart extends Component {
           testingQuery: false,
           testSuccess: true,
           queryData: data,
-          initialQuery: newChart.query
         });
       })
       .catch((error) => {
@@ -418,6 +422,7 @@ class AddChart extends Component {
       xAxis: "root",
       legend: `Dataset #${tempChart.Datasets.length + 1}`,
     });
+
     this.setState({
       newChart: tempChart,
       activeDataset: tempChart.Datasets.length - 1,
@@ -450,14 +455,28 @@ class AddChart extends Component {
     }
   }
 
-  _onCreateChart = () => {
+  _updateDraft = () => {
+    this.setState({ timeToSave: false });
+    this._onCreateChart();
+
+    setTimeout(() => {
+      this.setState({ timeToSave: true });
+    }, 10000);
+  }
+
+  _onSetAutosave = () => {
+    const { autosave } = this.state;
+    this.setState({ autosave: !autosave });
+  }
+
+  _onCreateChart = (create) => {
     const {
       createChart, match, runQuery, history, updateChart
     } = this.props;
     const { newChart, selectedConnection } = this.state;
     const updatedChart = newChart;
 
-    if (selectedConnection.type === "api") {
+    if (selectedConnection && selectedConnection.type === "api") {
       updatedChart.apiRequest = this._formatApiRequest();
     }
 
@@ -476,17 +495,37 @@ class AddChart extends Component {
           this.setState({ createLoading: false, createError: true });
         });
     } else {
+      if (create) updatedChart.draft = false;
+
       updateChart(
         match.params.projectId,
         newChart.id,
         updatedChart
       )
         .then((chart) => {
-          return runQuery(match.params.projectId, chart.id);
-        })
-        .then(() => {
           this.setState({ createLoading: false });
-          history.push(`/${match.params.teamId}/${match.params.projectId}/dashboard`);
+          toast.success("Chart updated 👌", {
+            position: "bottom-right",
+            autoClose: 1500,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            transition: Flip,
+          });
+          runQuery(match.params.projectId, chart.id);
+
+          if (create) {
+            history.push(`/${match.params.teamId}/${match.params.projectId}/dashboard`);
+          }
+
+          this.setState({
+            newChart: {
+              ...newChart, Datasets: chart.Datasets,
+            },
+          });
+
+          return Promise.resolve(true);
         })
         .catch(() => {
           this.setState({ createLoading: false, createError: true });
@@ -499,7 +538,7 @@ class AddChart extends Component {
       activeDataset, newChart, previewChart, selectedConnection, testSuccess,
       viewDatasetOptions, queryData, step, ddConnections,
       testError, testFailed, testingQuery, apiRequest, previewLoading,
-      previewError, lcArrayError, createError, initialQuery,
+      previewError, lcArrayError, createError, autosave,
       removeModal, createLoading, removeLoading,
     } = this.state;
     const { connections, match } = this.props;
@@ -570,7 +609,7 @@ class AddChart extends Component {
                     <Icon name="info" />
                     How to select fields
                   </Button>
-)}
+                )}
               >
                 <Container text>
                   <Header>Selecting fields</Header>
@@ -589,10 +628,8 @@ class AddChart extends Component {
                 objectData={queryData}
                 type={newChart.type}
                 subType={newChart.subType}
-                onSelectXField={(value) => this._onChangeXAxis(value)}
-                onSelectYField={(value) => {
-                  this.setState({ newChart: { ...newChart, yAxis: value } });
-                }}
+                onChange={this._onChangeAxis}
+                xAxisField={newChart.Datasets[activeDataset].xAxis}
               />
               )}
             <br />
@@ -605,6 +642,7 @@ class AddChart extends Component {
                 xAxis={newChart.Datasets[activeDataset].xAxis || ""}
                 datasetColor={newChart.Datasets[activeDataset].datasetColor}
                 fillColor={newChart.Datasets[activeDataset].fillColor}
+                fill={newChart.Datasets[activeDataset].fill}
                 legend={newChart.Datasets[activeDataset].legend}
                 patterns={newChart.Datasets[activeDataset].patterns}
                 dataArray={previewChart && previewChart.data.datasets[activeDataset]
@@ -614,11 +652,7 @@ class AddChart extends Component {
                 dataLabels={previewChart
                   ? previewChart.data.labels : newChart.chartData
                     ? newChart.chartData.data.labels : []}
-                onChangeXAxis={(xAxis) => this._onChangeXAxis(xAxis)}
-                onDatasetColor={(color) => this._onDatasetColor(color)}
-                onFillColor={(color, colorIndex) => this._onFillColor(color, colorIndex)}
-                onChangeLegend={(legend) => this._onChangeLegend(legend)}
-                onChangePatterns={(patterns) => this._onChangePatterns(patterns)}
+                onChange={this._onChangeChart}
               />
               )}
           </Sidebar>
@@ -639,7 +673,7 @@ class AddChart extends Component {
                 <Step.Group fluid widths={4}>
                   <Step
                     active={step === 0}
-                    onClick={() => this.setState({ step: 0 })}
+                    onClick={() => this._onChangeStep(0)}
                   >
                     <Icon name="th large" />
                     <Step.Content>
@@ -651,7 +685,7 @@ class AddChart extends Component {
                   <Step
                     active={step === 1}
                     disabled={!newChart.subType}
-                    onClick={() => this.setState({ step: 1 })}
+                    onClick={() => this._onChangeStep(1)}
                   >
                     <Icon name="plug" />
                     <Step.Content>
@@ -667,7 +701,7 @@ class AddChart extends Component {
                       || !newChart.name
                       || !newChart.subType
                     }
-                    onClick={() => this.setState({ step: 2 })}
+                    onClick={() => this._onChangeStep(2)}
                   >
                     <Icon name="database" />
                     <Step.Content>
@@ -684,7 +718,7 @@ class AddChart extends Component {
                       || !testSuccess
                       || !newChart.subType
                     }
-                    onClick={() => this.setState({ step: 3 })}
+                    onClick={() => this._onChangeStep(3)}
                   >
                     <Icon name="chart area" />
                     <Step.Content>
@@ -699,19 +733,7 @@ class AddChart extends Component {
                   <ChartTypesSelector
                     type={newChart.type}
                     subType={newChart.subType}
-                    typeSelected={(type) => {
-                      setTimeout(() => this.setState({ newChart: { ...newChart, type } }));
-                    }}
-                    subTypeSelected={(subType) => {
-                      if (!subType) {
-                        setTimeout(() => {
-                          // hacky things
-                          this.setState({ newChart: { ...newChart, subType: "" } });
-                        });
-                      } else {
-                        this.setState({ newChart: { ...newChart, subType } });
-                      }
-                    }}
+                    onChange={this._onChangeType}
                   />
                   )}
 
@@ -910,7 +932,10 @@ class AddChart extends Component {
                         && (
                         <div>
                           <br />
-                          <Message negative>
+                          <Message
+                            negative
+                            onDismiss={() => this.setState({ previewError: false })}
+                          >
                             <Message.Header>
                               {"Oh snap! We could't render the chart for you"}
                             </Message.Header>
@@ -988,24 +1013,7 @@ class AddChart extends Component {
                         includeZeros={newChart.includeZeros}
                         currentEndDate={newChart.currentEndDate}
                         timeInterval={newChart.timeInterval}
-                        onDisplayLegend={() => this._onDisplayLegend(!newChart.displayLegend)}
-                        onChangeDateRange={this._onDateRange}
-                        onChangePoint={(point) => this._onChangePoint(point)}
-                        onChangeZeros={(includeZeros) => {
-                          this.setState({ newChart: { ...newChart, includeZeros } }, () => {
-                            this._onPreview();
-                          });
-                        }}
-                        onChangeCurrentEndDate={(currentEndDate) => {
-                          this.setState({ newChart: { ...newChart, currentEndDate } }, () => {
-                            this._onPreview();
-                          });
-                        }}
-                        onChangeTimeInterval={(timeInterval) => {
-                          this.setState({ newChart: { ...newChart, timeInterval } }, () => {
-                            this._onPreview();
-                          });
-                        }}
+                        onChange={this._onChangeGlobalSettings}
                         onComplete={() => this._onPreview()}
                       />
                     </Grid.Column>
@@ -1029,29 +1037,54 @@ class AddChart extends Component {
                     content="In order to create a valid time series chart, you must select a date field that is within an array. Make sure there is only one array in your selector '[]'."
                   />
                   )}
+                <ToastContainer
+                  position="bottom-right"
+                  autoClose={1500}
+                  hideProgressBar={false}
+                  newestOnTop={false}
+                  closeOnClick
+                  rtl={false}
+                  pauseOnVisibilityChange
+                  draggable
+                  pauseOnHover
+                  transition={Flip}
+                />
               </Segment>
               <Button.Group attached="bottom">
                 <Button
-                  color="teal"
+                  secondary
                   icon
                   labelPosition="left"
                   disabled={step === 0}
-                  onClick={() => this.setState({ step: step - 1 })}
+                  onClick={() => this._onChangeStep(step - 1)}
                 >
                   <Icon name="chevron left" />
                   Back
                 </Button>
 
+                {newChart.id && (
+                  <Button
+                    color={autosave ? "teal" : "gray"}
+                    onClick={this._onSetAutosave}
+                    icon
+                    labelPosition="left"
+                  >
+                    <Icon name={autosave ? "toggle on" : "toggle off"} />
+                    Autosave
+                    { autosave ? " on" : " off" }
+                  </Button>
+                )}
+
                 {newChart.id
                   && (
                   <Button
                     primary
-                    disabled={
-                      initialQuery !== newChart.query || !newChart.subType
-                    }
                     loading={createLoading}
                     onClick={this._onUpdateConfirmation}
+                    icon
+                    labelPosition="right"
                   >
+                    <Icon name="edit" />
                     Update the chart
                   </Button>
                   )}
@@ -1066,7 +1099,7 @@ class AddChart extends Component {
                       if (step === 2 && !testSuccess && selectedConnection.type !== "api") {
                         this._testQuery();
                       } else {
-                        this.setState({ step: step + 1 });
+                        this._onChangeStep(step + 1);
                       }
                     }}
                     loading={testingQuery}
@@ -1080,7 +1113,7 @@ class AddChart extends Component {
                       ? "Run test" : "Next"}
                   </Button>
                   )}
-                {step > 2 && !newChart.id
+                {step > 2 && newChart.draft
                   && (
                   <Button
                     secondary
@@ -1088,7 +1121,7 @@ class AddChart extends Component {
                     labelPosition="right"
                     disabled={!testSuccess}
                     loading={createLoading}
-                    onClick={this._onCreateChart}
+                    onClick={() => this._onCreateChart(true)}
                   >
                     <Icon name="checkmark" />
                     Create the chart
@@ -1126,7 +1159,7 @@ class AddChart extends Component {
               color="teal"
               inverted
               loading={!!removeLoading}
-              onClick={this._onCreateChart}
+              onClick={() => this._onCreateChart()}
             >
               <Icon name="checkmark" />
               Update & Remove datasets
